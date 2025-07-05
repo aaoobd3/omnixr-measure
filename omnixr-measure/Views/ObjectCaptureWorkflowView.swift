@@ -64,6 +64,9 @@ struct ObjectCaptureWorkflowView: View {
         .sheet(isPresented: $showingNameInput) {
             nameInputView
         }
+        .sheet(isPresented: $captureSessionManager.showingPassPrompt) {
+            passPromptView
+        }
         .alert("Camera Access Required", isPresented: $showingCameraPermissionDenied) {
             Button("Settings") {
                 if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
@@ -183,6 +186,107 @@ struct ObjectCaptureWorkflowView: View {
         .presentationDetents([.medium])
     }
     
+    // MARK: - Pass Prompt View
+    
+    private var passPromptView: some View {
+        NavigationView {
+            VStack(spacing: 24) {
+                VStack(spacing: 16) {
+                    Image(systemName: captureSessionManager.currentPass.icon)
+                        .font(.system(size: 48))
+                        .foregroundColor(.blue)
+                    
+                    Text("Great Progress!")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text("You've completed the \(captureSessionManager.currentPass.displayName) pass")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                
+                // Show next pass info if available
+                if let nextPass = getNextPass() {
+                    VStack(spacing: 12) {
+                        Text("Continue with \(nextPass.displayName)?")
+                            .font(.headline)
+                        
+                        Text(nextPass.detailedInstruction)
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    .padding()
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(12)
+                }
+                
+                // Progress indicator
+                VStack(spacing: 8) {
+                    Text("Capture Progress")
+                        .font(.headline)
+                    
+                    HStack(spacing: 16) {
+                        ForEach(CapturePass.allCases, id: \.self) { pass in
+                            VStack(spacing: 4) {
+                                Image(systemName: pass.icon)
+                                    .font(.title3)
+                                    .foregroundColor(
+                                        captureSessionManager.completedPasses.contains(pass) ? .green :
+                                        pass == captureSessionManager.currentPass ? .blue : .gray
+                                    )
+                                
+                                Text(pass.displayName)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+                
+                Spacer()
+                
+                // Action buttons
+                VStack(spacing: 12) {
+                    if getNextPass() != nil {
+                        Button("Continue to Next Pass") {
+                            captureSessionManager.continueToNextPass()
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .cornerRadius(12)
+                    }
+                    
+                    Button("Process Model Now") {
+                        captureSessionManager.skipToProcessing()
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.green)
+                    .cornerRadius(12)
+                }
+            }
+            .padding()
+            .navigationTitle("Capture Pass Complete")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Process") {
+                        captureSessionManager.skipToProcessing()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+    
     // MARK: - Preparing View
     
     private var preparingView: some View {
@@ -230,6 +334,22 @@ struct ObjectCaptureWorkflowView: View {
             VStack {
                 // Top instruction overlay
                 VStack(spacing: 8) {
+                    // Current pass indicator
+                    HStack(spacing: 8) {
+                        Image(systemName: captureSessionManager.currentPass.icon)
+                            .font(.title3)
+                            .foregroundColor(.blue)
+                        
+                        Text(captureSessionManager.currentPass.displayName)
+                            .font(.headline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.7))
+                    .cornerRadius(8)
+                    
                     Text(getStepDisplayName())
                         .font(.title2)
                         .fontWeight(.semibold)
@@ -310,9 +430,9 @@ struct ObjectCaptureWorkflowView: View {
                         // Finish button (only show during capturing)
                         if captureSessionManager.sessionState == .capturing {
                             Button {
-                                captureSessionManager.finishCapture()
+                                captureSessionManager.finishCurrentPass()
                             } label: {
-                                Text("Finish")
+                                Text("Finish Pass")
                                     .font(.headline)
                                     .foregroundColor(.black)
                                     .padding(.horizontal, 24)
@@ -610,6 +730,17 @@ struct ObjectCaptureWorkflowView: View {
     
     // MARK: - Helper Methods
     
+    private func getNextPass() -> CapturePass? {
+        switch captureSessionManager.currentPass {
+        case .sides:
+            return .top
+        case .top:
+            return .bottom
+        case .bottom:
+            return nil
+        }
+    }
+    
     private func getButtonText() -> String {
         guard let sessionState = captureSessionManager.sessionState else {
             return "Start Detection"
@@ -657,7 +788,7 @@ struct ObjectCaptureWorkflowView: View {
         case .detecting:
             return "Object detected! Tap 'Start Capturing' to begin scanning"
         case .capturing:
-            return "Walk around the object to capture from all angles"
+            return captureSessionManager.currentPass.instruction
         case .finishing:
             return "Completing capture..."
         default:

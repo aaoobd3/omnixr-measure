@@ -40,6 +40,48 @@ enum CaptureStep: CaseIterable {
     }
 }
 
+// Capture passes for multi-pass workflow
+enum CapturePass: Int, CaseIterable {
+    case sides = 0
+    case top = 1
+    case bottom = 2
+    
+    var displayName: String {
+        switch self {
+        case .sides: return "Side Views"
+        case .top: return "Top Views"
+        case .bottom: return "Bottom Views"
+        }
+    }
+    
+    var instruction: String {
+        switch self {
+        case .sides: return "Walk around the object at eye level, capturing all sides"
+        case .top: return "Capture the object from above, moving around the top"
+        case .bottom: return "Capture the object from below angles and underneath"
+        }
+    }
+    
+    var detailedInstruction: String {
+        switch self {
+        case .sides:
+            return "Hold your device at the same height as the object and walk in a complete circle around it. Keep the object centered in the frame."
+        case .top:
+            return "Hold your device above the object and capture from different angles looking down. Move around the object while maintaining the top view."
+        case .bottom:
+            return "Capture the object from below by angling your device upward. Try to get underneath views if possible."
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .sides: return "arrow.triangle.2.circlepath"
+        case .top: return "arrow.up.circle"
+        case .bottom: return "arrow.down.circle"
+        }
+    }
+}
+
 @MainActor
 class CaptureSessionManager: ObservableObject {
     
@@ -54,6 +96,12 @@ class CaptureSessionManager: ObservableObject {
     @Published var processingStage: String = ""
     @Published var estimatedRemainingTime: TimeInterval = 0
     @Published var previewModelURL: URL?  // For model preview
+    
+    // Multi-pass capture properties
+    @Published var currentPass: CapturePass = .sides
+    @Published var completedPasses: Set<CapturePass> = []
+    @Published var showingPassPrompt: Bool = false
+    @Published var isMultiPassMode: Bool = true
     
     // MARK: - Private Properties
     private var _captureSession: ObjectCaptureSession?
@@ -149,6 +197,11 @@ class CaptureSessionManager: ObservableObject {
         self.processingStage = ""
         self.estimatedRemainingTime = 0
         
+        // Initialize multi-pass state
+        self.currentPass = .sides
+        self.completedPasses.removeAll()
+        self.showingPassPrompt = false
+        
         // Setup directories and URLs
         setupOutputDirectories()
         
@@ -183,8 +236,20 @@ class CaptureSessionManager: ObservableObject {
     
     /// Handle scan pass completion (called from UI onChange)
     func handleScanPassCompleted() {
-        print("📋 Scan pass completed by user - finishing session...")
-        _captureSession?.finish()
+        print("📋 Scan pass completed by user - current pass: \(currentPass.displayName)")
+        
+        // Mark current pass as completed
+        completedPasses.insert(currentPass)
+        
+        if isMultiPassMode && currentPass != .bottom {
+            // Show prompt for next pass instead of finishing
+            print("🔄 Showing pass completion prompt for next pass")
+            showingPassPrompt = true
+        } else {
+            // This was the last pass or single-pass mode, finish the session
+            print("🏁 Last pass completed, finishing session...")
+            _captureSession?.finish()
+        }
     }
     
     /// Handle session state change (called from UI onChange)
@@ -302,6 +367,56 @@ class CaptureSessionManager: ObservableObject {
         print("✅ Object capturing started successfully")
     }
     
+    /// Finish current capture pass
+    func finishCurrentPass() {
+        print("🏁 Finishing current pass: \(currentPass.displayName)")
+        
+        // Mark current pass as completed
+        completedPasses.insert(currentPass)
+        
+        if isMultiPassMode && currentPass != .bottom {
+            // Show prompt for next pass
+            showingPassPrompt = true
+        } else {
+            // Finish entire capture session
+            finishCapture()
+        }
+    }
+    
+    /// Continue to next capture pass
+    func continueToNextPass() {
+        guard let nextPass = getNextPass() else {
+            finishCapture()
+            return
+        }
+        
+        currentPass = nextPass
+        showingPassPrompt = false
+        
+        print("➡️ Moving to next pass: \(currentPass.displayName)")
+        
+        // Continue with the same session - don't restart
+        // The session remains in capturing state
+    }
+    
+    /// Skip remaining passes and go to processing
+    func skipToProcessing() {
+        showingPassPrompt = false
+        finishCapture()
+    }
+    
+    /// Get the next capture pass
+    private func getNextPass() -> CapturePass? {
+        switch currentPass {
+        case .sides:
+            return .top
+        case .top:
+            return .bottom
+        case .bottom:
+            return nil
+        }
+    }
+    
     /// Finish capture and start processing
     func finishCapture() {
         print("🏁 Finishing capture session...")
@@ -347,6 +462,11 @@ class CaptureSessionManager: ObservableObject {
         processingStage = ""
         estimatedRemainingTime = 0
         previewModelURL = nil
+        
+        // Reset multi-pass state
+        currentPass = .sides
+        completedPasses.removeAll()
+        showingPassPrompt = false
     }
     
     /// Reset to idle state
