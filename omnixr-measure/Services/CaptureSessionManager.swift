@@ -218,8 +218,12 @@ class CaptureSessionManager: ObservableObject {
         // Create capture view
         captureView = ObjectCaptureView(session: session)
         
-        // Start session (no configuration needed, like SuperSimpleObjectCapture)
-        session.start(imagesDirectory: imagesDir)
+        // Configure session for better multi-pass capture
+        var configuration = ObjectCaptureSession.Configuration()
+        configuration.isOverCaptureEnabled = true
+        
+        // Start session with configuration
+        session.start(imagesDirectory: imagesDir, configuration: configuration)
         
         // Setup observers for session state and scan pass completion
         setupSessionObservers(session: session)
@@ -395,8 +399,23 @@ class CaptureSessionManager: ObservableObject {
         
         print("➡️ Moving to next pass: \(currentPass.displayName)")
         
-        // Continue with the same session - don't restart
-        // The session remains in capturing state
+        // Use ObjectCapture's native scan pass method
+        if let session = _captureSession {
+            print("🔄 Current session state: \(session.state)")
+            
+            // First pause the session if it's currently capturing
+            if session.state == .capturing {
+                print("⏸️ Pausing session before starting new scan pass...")
+                session.pause()
+            }
+            
+            // Wait a brief moment for the pause to take effect, then start new scan pass
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                print("🔄 Beginning new scan pass after flip for: \(self.currentPass.displayName)")
+                session.beginNewScanPassAfterFlip()
+                print("✅ New scan pass after flip started for \(self.currentPass.displayName)")
+            }
+        }
     }
     
     /// Skip remaining passes and go to processing
