@@ -372,24 +372,9 @@ struct ObjectCaptureWorkflowView: View {
                 
                 Spacer()
                 
-                // Bottom controls
+                // Bottom controls - fully transparent background
                 VStack(spacing: 16) {
-                    // Progress indicator
-                    HStack {
-                        Text("Images: \(captureSessionManager.capturedImageCount)")
-                            .foregroundColor(.white)
-                        
-                        Spacer()
-                        
-                        Text(captureSessionManager.formattedCaptureDuration)
-                            .foregroundColor(.white)
-                    }
-                    
-                    // Progress bar
-                    ProgressView(value: max(0.0, min(1.0, captureSessionManager.progress)))
-                        .progressViewStyle(LinearProgressViewStyle(tint: .white))
-                    
-                    // Control buttons
+                    // Control buttons only - no progress indicators
                     HStack(spacing: 16) {
                         // Cancel button
                         Button {
@@ -404,6 +389,8 @@ struct ObjectCaptureWorkflowView: View {
                                 .background(Color.red.opacity(0.8))
                                 .cornerRadius(8)
                         }
+                        
+                        Spacer()
                         
                         // Action button based on actual session state
                         Button {
@@ -444,7 +431,7 @@ struct ObjectCaptureWorkflowView: View {
                     }
                 }
                 .padding()
-                .background(Color.black.opacity(0.8))
+                .background(Color.clear)
             }
         }
     }
